@@ -47,6 +47,7 @@ SCRIPT_VERIFY_MINIMALDATA = object()
 SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_NOPS = object()
 SCRIPT_VERIFY_CLEANSTACK = object()
 SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY = object()
+SCRIPT_VERIFY_CHECKSEQUENCEVERIFY = object()
 
 SCRIPT_VERIFY_FLAGS_BY_NAME = {
     'P2SH': SCRIPT_VERIFY_P2SH,
@@ -59,6 +60,7 @@ SCRIPT_VERIFY_FLAGS_BY_NAME = {
     'DISCOURAGE_UPGRADABLE_NOPS': SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_NOPS,
     'CLEANSTACK': SCRIPT_VERIFY_CLEANSTACK,
     'CHECKLOCKTIMEVERIFY': SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY,
+    'CHECKSEQUENCEVERIFY': SCRIPT_VERIFY_CHECKSEQUENCEVERIFY,
 }
 
 
@@ -620,10 +622,145 @@ def _EvalScript(stack, scriptIn, txTo, inIdx, flags=()):
                 pass
 
             elif sop >= OP_NOP1 and sop <= OP_NOP10:
-                if SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_NOPS in flags:
+                # The following NOP operations are explicitly defined for future
+                # soft-fork upgrades. If any non-NOP operation is able to be added 
+                # through a soft-fork, these operations will likely be used as 
+                # its template.
+
+                if sop == OP_CHECKLOCKTIMEVERIFY:
+                    if not (SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY in flags):
+                        # not enabled; treat as a NOP
+                        if SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_NOPS in flags:
+                            err_raiser(
+                                EvalScriptError, "%s reserved for soft-fork upgrades" % OPCODE_NAMES[sop])
+                        break
+
+                    # Note that elsewhere numeric opcodes are limited to
+                    # operands in the range -2**31+1 to 2**31-1, however it is
+                    # legal for opcodes to produce results exceeding that
+                    # range. This limitation is implemented by CScriptNum's
+                    # default 4-byte limit.
+                    #
+                    # If we kept to that limit we'd have a narrow definition
+                    # of nLockTime, resulting in nLockTime's rather ugly
+                    # adjustment for the 1 January 2038 problem and the issue
+                    # of whether to use the satoshi 2038 adjustment to the
+                    # same problem.
+                    #
+                    # Instead, we verify nLockTime against the full possible
+                    # range.
+                    check_args(1)
+                    if len(stack[-1]) > 5:
+                        err_raiser(ArgumentsInvalidError, sop, "argument must be 5 bytes or fewer")
+
+                    # Convert the stack item into a number and force it to be within range
+                    nLockTime = _CastToBigNum(stack[-1], err_raiser)
+                    if nLockTime < 0:
+                        err_raiser(ArgumentsInvalidError, sop, "negative lock time")
+
+                    # In the rare event that the argument may be < 0 due to
+                    # some arithmetic being done first, you can always use
+                    # 0 MAX CHECKLOCKTIMEVERIFY.
+                    if txTo is None:
+                        err_raiser(ArgumentsInvalidError, sop, "missing transaction")
+
+                    # Unfortunately there's no way to tell if this is a block height or
+                    # timestamp so the corresponding check from Bitcoin Core's code does
+                    # not work; we'll just have to trust the locktime was correctly calculated
+                    # by the other validation checks.
+
+                    # Actually comparing the nLockTime.
+                    if nLockTime > txTo.nLockTime:
+                        err_raiser(ArgumentsInvalidError, sop, "locktime requirement not satisfied")
+
+                    # Finally the nLockTime feature can be disabled and thus
+                    # CHECKLOCKTIMEVERIFY bypassed if every txin has been
+                    # finalized by setting nSequence to maxint. The
+                    # transaction would be allowed into the blockchain, making
+                    # the opcode ineffective.
+                    #
+                    # Testing if this vin is not final is sufficient to
+                    # prevent this condition. Alternatively we could test all
+                    # inputs, but testing just this input minimizes the data
+                    # required to prove correct CHECKLOCKTIMEVERIFY execution.
+                    if txTo.vin[inIdx].nSequence == 0xffffffff:
+                        err_raiser(ArgumentsInvalidError, sop, "transaction's nSequence is equal to 0xffffffff")
+
+                elif sop == OP_CHECKSEQUENCEVERIFY:
+                    if not (SCRIPT_VERIFY_CHECKSEQUENCEVERIFY in flags):
+                        # not enabled; treat as a NOP
+                        if SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_NOPS in flags:
+                            err_raiser(
+                                EvalScriptError, "%s reserved for soft-fork upgrades" % OPCODE_NAMES[sop])
+                        break
+
+                    # nSequence, like nLockTime, is a 32-bit unsigned integer
+                    # field. See the comment on CHECKLOCKTIMEVERIFY regarding
+                    # 5-byte limitations.
+                    check_args(1)
+                    if len(stack[-1]) > 5:
+                        err_raiser(ArgumentsInvalidError, sop, "argument must be 5 bytes or fewer")
+
+                    # Convert the stack item into a number and force it to be within range
+                    nSequence = _CastToBigNum(stack[-1], err_raiser)
+                    if nSequence < 0:
+                        err_raiser(ArgumentsInvalidError, sop, "negative sequence")
+
+                    # In the rare event that the argument may be < 0 due to
+                    # some arithmetic being done first, you can always use
+                    # 0 MAX CHECKSEQUENCEVERIFY.
+                    if txTo is None:
+                        err_raiser(ArgumentsInvalidError, sop, "missing transaction")
+
+                    # To provide for future soft-fork upgrades, we constrain the
+                    # sequence values that BIP112 can use to ensure they cannot
+                    # conflict with older verification rules.
+                    #
+                    # Sequence locks consist of two bits, (1) a relative lock-time bit (bit 31)
+                    # and a (2) disable flag (bit 22). 
+                    #
+                    # The disable flag (bit 22) is set to indicate that sequence
+                    # locks are disabled. The relative lock-time bit (bit 31) is set to
+                    # indicate that the transaction version has been upgraded to support
+                    # relative lock-time.
+                    # (Bit 31 is the highest-order bit in the nSequence field.)
+                    #
+                    # The only valid values for the relative lock-time flag are 0 or 1.
+                    # Only if this flag is set, is the sequence value interpreted as 
+                    # a relative lock-time.
+                    #
+                    # For compatibility with BIP 68, CSV rejects sequence
+                    # values with the disable bit set.
+                    if nSequence & (1 << 22):  # Disable flag
+                        err_raiser(ArgumentsInvalidError, sop, "disable flag is set")
+
+                    # Transaction version must be >= 2 for relative lock-time
+                    if txTo.nVersion < 2:
+                        err_raiser(ArgumentsInvalidError, sop, "transaction version must be >= 2")
+
+                    # The relative lock-time is calculated from the most recent
+                    # output of the input's previous transaction.
+                    #
+                    # Since we don't have access to the input's previous transaction
+                    # in this implementation of EvalScript (like we would in Bitcoin Core),
+                    # we cannot fully validate CSV. This is a limitation of the pure-Python
+                    # implementation.
+                    #
+                    # To avoid silent false validations, we raise an error.
+                    err_raiser(
+                        EvalScriptError, 
+                        "CHECKSEQUENCEVERIFY requires access to input's previous tx, " +
+                        "which is not available in this implementation"
+                    )
+
+                elif SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_NOPS in flags:
                     err_raiser(
                         EvalScriptError, "%s reserved for soft-fork upgrades" % OPCODE_NAMES[sop])
                 else:
+                    # All other NOPs have no effect on the stack or script
+                    # execution. For all practical purposes this makes them
+                    # NOPs, even if the original values of OP_NOP1-10 were to
+                    # have some sort of effect.
                     pass
 
             elif sop == OP_OVER:
@@ -855,6 +992,7 @@ __all__ = (
     'SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_NOPS',
     'SCRIPT_VERIFY_CLEANSTACK',
     'SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY',
+    'SCRIPT_VERIFY_CHECKSEQUENCEVERIFY',
     'SCRIPT_VERIFY_FLAGS_BY_NAME',
     'EvalScriptError',
     'MaxOpCountError',

@@ -117,3 +117,31 @@ Currently this is just API documentation generated from the code and
 docstrings. Higher level written docs would be useful, perhaps starting with
 much of this README. Pages are written in reStructuredText and linked from
 index.rst.
+
+## Implementation Notes
+
+### Bitcoin & Evrmore Compatibility
+
+This library has been updated from bitcoin-python to handle Evrmore specific features:
+
+1. Asset Support: Functionality for creating, transferring, and managing Evrmore assets
+2. Script Opcodes: Support for Evrmore-specific script opcodes including OP_EVR_ASSET
+
+### OP_CHECKSEQUENCEVERIFY Support
+
+This library includes support for OP_CHECKSEQUENCEVERIFY (BIP112), which is required for certain smart contract patterns like payment channels. The implementation includes:
+
+1. Definition of the opcode (0xb2, formerly OP_NOP3)
+2. Verification flag support (SCRIPT_VERIFY_CHECKSEQUENCEVERIFY)
+3. Basic opcode validation
+
+Note: The current CSV implementation has limitations in fully verifying relative timelocks since it doesn't have access to the previous transaction's outputs during script evaluation. When the CSV verification flag is enabled, the opcode will throw an error explaining this limitation.
+
+Use OP_CHECKSEQUENCEVERIFY in your scripts as follows:
+
+```python
+from evrmore.core.script import OP_CHECKSEQUENCEVERIFY, OP_DROP
+
+# To create a script with relative timelock of 10 blocks
+script = CScript([10, OP_CHECKSEQUENCEVERIFY, OP_DROP, pubkey, OP_CHECKSIG])
+```

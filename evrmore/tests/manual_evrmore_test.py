@@ -48,14 +48,14 @@
 #
 # testing signing and verifying a message with the private key
 # >>> from typing import Union
-# >>> from evrmore.signmessage import EvrmoreMessage, SignMessage
+# >>> from evrmore.signmessage import EvrmoreMessage, signMessage
 # >>> def signMessage(key: CEvrmoreSecret, message: Union[str, EvrmoreMessage]):
 # ...     ''' returns binary signature '''
-# ...     return SignMessage(
+# ...     return signMessage(
 # ...         key,
 # ...         EvrmoreMessage(message) if isinstance(message, str) else message)
 # ...
-# >>> from evrmore.signmessage import VerifyMessage
+# >>> from evrmore.signmessage import verifyMessage
 # >>> def verify(
 # ...     message: Union[str, EvrmoreMessage],
 # ...     signature: Union[bytes, str],
@@ -63,12 +63,12 @@
 # ...     address: str = None
 # ... ):
 # ...     ''' returns bool success '''
-# ...     return VerifyMessage(
+# ...     return verifyMessage(
 # ...         address or generateAddress(publicKey),
 # ...         EvrmoreMessage(message) if isinstance(message, str) else message,
 # ...         signature if isinstance(signature, bytes) else signature.encode())
 # ...
-# >>> signed = SignMessage(priv, EvrmoreMessage('helloworld'))
+# >>> signed = signMessage(priv, EvrmoreMessage('helloworld'))
 # >>> signed
 # b'IJuynEWwEHOK/8CGWWc7jGGhFRfvJ0NjOk3bQk+Xqn3Ue0Xt0ejSoECmpo+SbcfMGqG+i58ij8B0mH0qifdd3/Q='
 # >>> verify('helloworld', signed, address=str(addr))

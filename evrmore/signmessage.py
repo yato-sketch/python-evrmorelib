@@ -26,7 +26,7 @@ if sys.version > '3':
     def _bchr(x): return bytes([x])
     def _bord(x): return x
 
-
+# deprecated
 def VerifyMessage(address, message, sig):
     sig = base64.b64decode(sig)
     hash = message.GetHash()
@@ -35,7 +35,19 @@ def VerifyMessage(address, message, sig):
 
     return str(P2PKHEvrmoreAddress.from_pubkey(pubkey)) == str(address)
 
+#def verifyMessage(message: 'EvrmoreMessage', sig: bytes, pubkey: Union[bytes, str]=None, address: str =None):
+def verifyMessage(message, signature, pubkey=None, address=None):
+    ''' compares against pubkey or address, returns bool success '''
+    pub = CPubKey.recover_compact(
+        hash=message.GetHash(),
+        sig=base64.b64decode(signature))
+    if isinstance(pubkey, str):
+        pubkey = CPubKey(bytes.fromhex(pubkey))
+    return pub == pubkey or (
+        address is not None and
+        str(P2PKHEvrmoreAddress.from_pubkey(pub)) == str(address))
 
+# deprecated
 def SignMessage(key, message):
     sig, i = key.sign_compact(message.GetHash())
 
@@ -43,6 +55,13 @@ def SignMessage(key, message):
     if key.is_compressed:
         meta += 4
 
+    return base64.b64encode(_bchr(meta) + sig)
+
+def signMessage(key, message):
+    sig, i = key.sign_compact(message.GetHash())
+    meta = 27 + i
+    if key.is_compressed:
+        meta += 4
     return base64.b64encode(_bchr(meta) + sig)
 
 
@@ -72,3 +91,17 @@ class EvrmoreMessage(ImmutableSerializable):
 
     def __repr__(self):
         return 'EvrmoreMessage(%s, %s)' % (self.magic, self.message)
+
+    def verify(self, signature, pubkey=None, address=None):
+        return verifyMessage(
+            message=self,
+            signature=signature,
+            pubkey=pubkey,
+            address=address)
+
+    def sign(self, signature, pubkey=None, address=None):
+        return signMessage(
+            message=self,
+            signature=signature,
+            pubkey=pubkey,
+            address=address)

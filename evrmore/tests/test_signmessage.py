@@ -14,7 +14,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import unittest
 
 from evrmore.wallet import CEvrmoreSecret
-from evrmore.signmessage import EvrmoreMessage, VerifyMessage, SignMessage
+from evrmore.signmessage import EvrmoreMessage, verifyMessage, signMessage
 import sys
 import os
 import json
@@ -40,13 +40,13 @@ class Test_SignVerifyMessage(unittest.TestCase):
 
         message = EvrmoreMessage(message)
 
-        self.assertTrue(VerifyMessage(address, message, signature))
+        self.assertTrue(verifyMessage(address=address, message=message, signature=signature))
 
     def test_verify_message_vectors(self):
         for vector in load_test_vectors('signmessage.json'):
             message = EvrmoreMessage(vector['address'])
-            self.assertTrue(VerifyMessage(
-                vector['address'], message, vector['signature']))
+            self.assertTrue(verifyMessage(
+                address=vector['address'], message=message, signature=vector['signature']))
 
     def test_sign_message_simple(self):
         key = CEvrmoreSecret(
@@ -55,22 +55,22 @@ class Test_SignVerifyMessage(unittest.TestCase):
         message = address
 
         message = EvrmoreMessage(message)
-        signature = SignMessage(key, message)
+        signature = signMessage(key, message)
 
         self.assertTrue(signature)
-        self.assertTrue(VerifyMessage(address, message, signature))
+        self.assertTrue(verifyMessage(address=address, message=message, signature=signature))
 
     def test_sign_message_vectors(self):
         for vector in load_test_vectors('signmessage.json'):
             key = CEvrmoreSecret(vector['wif'])
             message = EvrmoreMessage(vector['address'])
 
-            signature = SignMessage(key, message)
+            signature = signMessage(key, message)
 
             self.assertTrue(
                 signature, "Failed to sign for [%s]" % vector['address'])
-            self.assertTrue(VerifyMessage(
-                vector['address'], message, vector['signature']), "Failed to verify signature for [%s]" % vector['address'])
+            self.assertTrue(verifyMessage(
+                address=vector['address'], message=message, signature=vector['signature']), "Failed to verify signature for [%s]" % vector['address'])
 
 
 if __name__ == "__main__":

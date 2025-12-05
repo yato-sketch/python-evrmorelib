@@ -31,7 +31,7 @@ def print_verbose(signature, key, msg):
     print('Address: %s' % address)
     print('Message: %s' % msg)
     print('Signature: %s' % signature)
-    print('Verified: %s' % VerifyMessage(address, message, signature))
+    print('Verified: %s' % VerifyMessage(address=address, message=message, signature=signature))
     print('\nTo verify using bitcoin core:')
     print('\n`bitcoin-cli verifymessage %s \'%s\' \'%s\'`\n' % (address, signature.decode('ascii'), msg))
 

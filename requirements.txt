@@ -2,4 +2,4 @@ x16r-hash
 x16rv2-hash
 kawpow
 # needed for p2sh
-plyvel==1.5.1
+plyvel==1.5.1 # apt-get install libleveldb-dev -y

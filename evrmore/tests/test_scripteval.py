@@ -115,3 +115,38 @@ class Test_EvalScript(unittest.TestCase):
                 continue
 
             self.fail('Expected %r to fail' % test_case)
+            
+    def test_csv_implementation(self):
+        """Test that our OP_CHECKSEQUENCEVERIFY implementation behaves as expected"""
+        
+        # Test 1: Basic detection of OP_CHECKSEQUENCEVERIFY in script
+        scriptSig = CScript([])
+        scriptPubKey = CScript([OP_1, OP_CHECKSEQUENCEVERIFY, OP_DROP, OP_1])
+        (txCredit, txSpend) = self.create_test_txs(scriptSig, scriptPubKey)
+        
+        # Should pass when CSV is not enforced (treated as NOP)
+        flags = set()
+        VerifyScript(scriptSig, scriptPubKey, txSpend, 0, flags)
+        
+        # Should fail when CSV is enforced (our implementation throws EvalScriptError)
+        flags = {SCRIPT_VERIFY_CHECKSEQUENCEVERIFY}
+        try:
+            VerifyScript(scriptSig, scriptPubKey, txSpend, 0, flags)
+            self.fail('Expected CHECKSEQUENCEVERIFY to fail but it passed')
+        except EvalScriptError:
+            # Expected - our implementation throws because it can't fully validate CSV
+            pass
+        
+        # Test 2: Verify that the opcode is correctly recognized
+        script = CScript([OP_CHECKSEQUENCEVERIFY])
+        self.assertEqual(script[0], 0xb2)
+        self.assertEqual(OPCODE_NAMES[script[0]], 'OP_CHECKSEQUENCEVERIFY')
+        
+        # Test 3: Script parsing recognizes the opcode name
+        script = parse_script('CHECKSEQUENCEVERIFY')
+        self.assertEqual(script[0], 0xb2)
+        
+        # Test 4: Alias to OP_NOP3 works
+        script = parse_script('NOP3')
+        self.assertEqual(script[0], 0xb2)
+        self.assertEqual(script[0], OP_CHECKSEQUENCEVERIFY)
